@@ -1,0 +1,4 @@
+hotel_id,name,region,room_type,source,source_ref,url,rating,review_count,note
+example-a,範例旅館A（請換成真實住宿）,宜蘭礁溪,標準雙人房,manual,,https://example.com/a,8.7,320,
+example-b,範例民宿B（請換成真實住宿）,新竹尖石,四人房,manual,,https://example.com/b,9.1,150,寵物友善
+demo-1,測試用假資料旅館,台北,商務雙人房,demo,,,8.6,500,只用來測試流程
