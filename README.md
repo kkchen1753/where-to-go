@@ -41,6 +41,21 @@ python track.py status                      # 各住宿累積幾天了
 - **任何一列有錯，整份都不會匯入**，修好再匯一次就好；同一天重複匯入會覆蓋。
 - 人工記錄量很大（10 間 × 8 週 × 6 晚 ≈ 480 筆），建議用 `--nights wed,sat` 只抽週三與週六。
 
+## 週末溢價與良心榜
+
+```bash
+python track.py rank                       # 良心榜
+python track.py rank --all                 # 加上未上榜的住宿與原因（內部用，不要公開）
+python track.py rank --json site/rank.json # 輸出良心榜資料給網頁
+```
+
+- 溢價 = 一般週六入住價 ÷ 同月一般平日（週日～週四）均價 − 1，同一間、同一房型比較。
+- 同一個入住日每天都會記錄一次價格，計算時取中位數，單日特價不會影響結果。
+- 連假、補班、國定假日前夕不列入計算，需要先在 `calendar/` 放行事曆（見 [calendar/README.md](calendar/README.md)）。
+- 累積不到 28 天、或可比較的週六不到 4 個，就不計算徽章。
+- 徽章：加價 ≤ 0% 為「週末不加價」，≤ 10% 為「加價 ≤10%」。
+- 上榜條件：有徽章、評分 ≥ 8.5、評論數 ≥ 100。`--json` 只會輸出上榜的住宿。
+
 ## 設定 `config.json`
 
 | 欄位 | 預設 | 說明 |
@@ -48,7 +63,11 @@ python track.py status                      # 各住宿累積幾天了
 | `weeks_ahead` | `8` | 追蹤未來幾週的入住日 |
 | `nights` | 週日～週四、週六 | 要記錄哪幾晚：`sun mon tue wed thu fri sat` |
 | `request_delay_seconds` | `3` | 自動抓價時每次請求間隔 |
-| `db_path` / `hotels_csv` / `input_dir` | | 檔案位置 |
+| `lookback_days` | `56` | 溢價只用最近幾天記錄的價格 |
+| `min_capture_days` / `min_saturdays` | `28` / `4` | 資料至少要累積多少才計算 |
+| `min_weekday_nights` | `2` | 每個月至少幾晚平日價才算均價 |
+| `max_premium` / `min_rating` / `min_reviews` | `0.1` / `8.5` / `100` | 上榜門檻 |
+| `db_path` / `hotels_csv` / `input_dir` / `calendar_dir` | | 檔案位置 |
 
 ## 其他指令
 

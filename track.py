@@ -7,10 +7,12 @@
     python track.py fetch                # 自動抓價（非 manual 來源）
     python track.py status               # 各住宿資料累積狀況
     python track.py export prices.csv    # 匯出全部價格
+    python track.py rank                 # 計算週末溢價，列出良心榜
 """
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 import unicodedata
@@ -19,10 +21,12 @@ from datetime import date
 from pathlib import Path
 
 from tracker import db
+from tracker.calendar import Calendar
 from tracker.config import load_config
 from tracker.dates import tracked_checkins, weekday_label
 from tracker.hotels import load_hotels
 from tracker.manual import read_filled, write_template
+from tracker.premium import evaluate_all, uncovered_checkins
 from tracker.sources import MANUAL, get_source
 
 ROOT = Path(__file__).resolve().parent
@@ -146,6 +150,73 @@ def cmd_export(cfg, args):
     print(f"匯出 {n} 筆 → {args.output}")
 
 
+def _ranking_json(results, today, t):
+    """給網頁用的資料：只放良心榜，不輸出未上榜的住宿。"""
+    return {
+        "generated_on": today.isoformat(),
+        "thresholds": {"max_premium": t.max_premium, "min_rating": t.min_rating,
+                       "min_reviews": t.min_reviews},
+        "hotels": [
+            {
+                "hotel_id": r.hotel.hotel_id, "name": r.hotel.name,
+                "region": r.hotel.region, "room_type": r.hotel.room_type,
+                "url": r.hotel.url, "rating": r.hotel.rating,
+                "review_count": r.hotel.review_count, "badge": r.badge,
+                "weekday_avg": r.weekday_avg, "saturday_avg": r.saturday_avg,
+                "premium": round(r.premium, 4), "saturdays": r.saturdays,
+                "prices": [
+                    {"checkin": n.checkin.isoformat(), "kind": n.kind, "price": n.price}
+                    for n in r.nights
+                ],
+            }
+            for r in results if r.quality
+        ],
+    }
+
+
+def cmd_rank(cfg, args):
+    hotels = load_hotels(cfg.hotels_csv)
+    calendar = Calendar.load(cfg.calendar_dir)
+    t = cfg.thresholds
+    with closing(db.connect(cfg.db_path)) as conn:
+        results = evaluate_all(conn, hotels, calendar, t, args.date)
+
+    ranked = [r for r in results if r.quality]
+    print(f"《週末不加價良心住宿榜》{args.date}（{len(ranked)} 間）")
+    print(f"門檻：評分 ≥ {t.min_rating}、評論 ≥ {t.min_reviews}、"
+          f"週末加價 ≤ {t.max_premium:.0%}\n")
+    for i, r in enumerate(ranked, start=1):
+        print(f"{i:>2}. {r.hotel.name}（{r.hotel.room_type}）[{r.badge}]")
+        print(f"    {r.summary()}　週六 {r.saturdays} 個樣本")
+
+    if args.all:
+        print("\n── 內部檢視：未上榜（不要公開）──")
+        for r in results:
+            if r.quality:
+                continue
+            reason = r.summary()
+            if r.ok and r.badge is None:
+                reason += "　超過加價門檻"
+            elif r.ok:
+                reason += "　評分或評論數未達門檻"
+            print(f"  {r.hotel.name}（{r.hotel.room_type}）：{reason}")
+
+    missing = uncovered_checkins(results, calendar)
+    if missing:
+        years = sorted({d.year for d in missing})
+        print(f"\n⚠ 行事曆沒有涵蓋 {missing[0]}～{missing[-1]}，連假無法排除。"
+              f"請把 {'、'.join(map(str, years))} 年的「政府行政機關辦公日曆表」CSV"
+              f"（data.gov.tw/dataset/14718）放進 {cfg.calendar_dir}")
+
+    if args.json:
+        args.json.parent.mkdir(parents=True, exist_ok=True)
+        args.json.write_text(
+            json.dumps(_ranking_json(results, args.date, t), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        print(f"\n良心榜資料 → {args.json}")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="週末不加價：住宿價格追蹤工具")
     parser.add_argument("--config", type=Path, default=ROOT / "config.json",
@@ -170,6 +241,11 @@ def main(argv=None):
     sub.add_parser("status", help="各住宿資料累積狀況")
     p = sub.add_parser("export", help="匯出全部價格為 CSV")
     p.add_argument("output", type=Path)
+    p = sub.add_parser("rank", help="計算週末溢價，列出良心榜")
+    p.add_argument("--date", type=_date_arg, default=date.today(),
+                   help="以哪一天為基準回溯，預設今天")
+    p.add_argument("--all", action="store_true", help="也列出未上榜的住宿（內部用）")
+    p.add_argument("--json", type=Path, help="輸出良心榜 JSON，給網頁用")
 
     args = parser.parse_args(argv)
     try:
@@ -177,6 +253,7 @@ def main(argv=None):
         {
             "plan": cmd_plan, "template": cmd_template, "import": cmd_import,
             "fetch": cmd_fetch, "status": cmd_status, "export": cmd_export,
+            "rank": cmd_rank,
         }[args.command](cfg, args)
     except (ValueError, FileNotFoundError) as e:
         sys.exit(f"錯誤：{e}")

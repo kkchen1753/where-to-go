@@ -1,8 +1,23 @@
 {
   "weeks_ahead": 8,
-  "nights": ["sun", "mon", "tue", "wed", "thu", "sat"],
+  "nights": [
+    "sun",
+    "mon",
+    "tue",
+    "wed",
+    "thu",
+    "sat"
+  ],
   "request_delay_seconds": 3,
   "db_path": "data/prices.db",
   "hotels_csv": "hotels.csv",
-  "input_dir": "input"
+  "input_dir": "input",
+  "lookback_days": 56,
+  "min_capture_days": 28,
+  "min_saturdays": 4,
+  "min_weekday_nights": 2,
+  "max_premium": 0.1,
+  "min_rating": 8.5,
+  "min_reviews": 100,
+  "calendar_dir": "calendar"
 }

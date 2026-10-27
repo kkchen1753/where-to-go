@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import List
 
 from .dates import parse_nights
+from .premium import Thresholds
 
 DEFAULT_NIGHTS = ["sun", "mon", "tue", "wed", "thu", "sat"]
 
@@ -17,11 +18,13 @@ class Config:
     db_path: Path
     hotels_csv: Path
     input_dir: Path
+    calendar_dir: Path
     weeks_ahead: int = 8
     # 要追蹤哪幾晚的入住價。週日～週四算平日，週六是比較對象。
     nights: List[str] = field(default_factory=lambda: list(DEFAULT_NIGHTS))
     # 自動抓價時，每次請求之間等幾秒，避免對網站造成負擔。
     request_delay_seconds: float = 3.0
+    thresholds: Thresholds = field(default_factory=Thresholds)
 
 
 def load_config(path: Path) -> Config:
@@ -40,12 +43,19 @@ def load_config(path: Path) -> Config:
         raise ValueError("config.json 的 weeks_ahead 至少要 1")
     nights = list(raw.get("nights", DEFAULT_NIGHTS))
     parse_nights(nights)  # 提早檢查拼字
+    defaults = Thresholds()
+    thresholds = Thresholds(**{
+        name: type(getattr(defaults, name))(raw.get(name, getattr(defaults, name)))
+        for name in Thresholds.__dataclass_fields__
+    })
     return Config(
         base_dir=base_dir,
         db_path=resolve("db_path", "data/prices.db"),
         hotels_csv=resolve("hotels_csv", "hotels.csv"),
         input_dir=resolve("input_dir", "input"),
+        calendar_dir=resolve("calendar_dir", "calendar"),
         weeks_ahead=weeks_ahead,
         nights=nights,
         request_delay_seconds=float(raw.get("request_delay_seconds", 3.0)),
+        thresholds=thresholds,
     )
